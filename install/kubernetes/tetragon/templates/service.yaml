@@ -17,6 +17,12 @@ spec:
       port: 2112
       protocol: TCP
       targetPort: {{ .Values.tetragon.prometheus.port }}
+{{- if .Values.tetragon.grpc.enabled }}
+    - name: grpc
+      port: {{ .Values.tetragon.grpc.port }}
+      protocol: TCP
+      targetPort: 54321
+{{- end }}
   selector:
     {{- with .Values.daemonSetLabelsOverride}}
     {{- toYaml . | nindent 4 }}

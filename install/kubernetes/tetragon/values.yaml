@@ -52,8 +52,6 @@ tetragon:
     privileged: true
   # -- Overrides the default livenessProbe for the tetragon container.
   livenessProbe: {}
-  #  grpc:
-  #    port: 54321
 
   # -- Tetragon puts processes in an LRU cache. The cache is used to find ancestors
   # for subsequently exec'ed processes.
@@ -173,7 +171,10 @@ tetragon:
     # -- Whether to enable exposing Tetragon gRPC.
     enabled: true
     # -- The address at which to expose gRPC. Examples: localhost:54321, unix:///var/run/cilum/tetragon/tetragon.sock
+    # The port match targetPort in service.yaml, it can differ from the service port
     address: "localhost:54321"
+    # The port where the service is exposed
+    port: 54321
   gops:
     # -- Whether to enable exposing gops server.
     enabled: true
