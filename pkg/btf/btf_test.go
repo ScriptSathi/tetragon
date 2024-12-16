@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	btf "github.com/cilium/ebpf/btf"
+	api "github.com/cilium/tetragon/pkg/api/tracingapi"
 	"github.com/cilium/tetragon/pkg/defaults"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/sys/unix"
@@ -160,4 +163,99 @@ func TestInitCachedBTF(t *testing.T) {
 		btffile := GetCachedBTFFile()
 		assert.EqualValues(t, defaults.DefaultBTFFile, btffile, "GetCachedBTFFile()  -  want:'%s'  - got:'%s'", defaults.DefaultBTFFile, btffile)
 	}
+}
+
+func testFindNextBtf(t *testing.T, spec *btf.Spec, rootTypeStr string, strPath string) (*[api.MaxBtfArgDepth]api.ConfigBtfArg, *btf.Type, error) {
+	var btfArgs [api.MaxBtfArgDepth]api.ConfigBtfArg
+	path := strings.Split(strPath, ".")
+
+	spec, err := NewBTF()
+	if err != nil {
+		assert.Error(t, err)
+	}
+	rootType, err := spec.AnyTypeByName(rootTypeStr)
+	if err != nil {
+		assert.Error(t, err)
+	}
+	lastBtfType, err := FindNextBtfType(&btfArgs, rootType, path, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return &btfArgs, lastBtfType, nil
+}
+
+func testAssertEqualPath(t *testing.T, spec *btf.Spec, rootTypeStr string, strPath string, resBtfArgs []api.ConfigBtfArg) {
+	var btfArgsToVerify [api.MaxBtfArgDepth]api.ConfigBtfArg
+
+	for i, item := range resBtfArgs {
+		if i < api.MaxBtfArgDepth {
+			btfArgsToVerify[i] = item
+		}
+	}
+
+	btfArgs, _, err := testFindNextBtf(t, spec, rootTypeStr, strPath)
+
+	assert.NoError(t, err)
+	assert.Equal(t, *btfArgs, btfArgsToVerify)
+}
+
+func testAssertEqualBtfPath(t *testing.T, spec *btf.Spec) {
+	// Test default behaviour
+	testAssertEqualPath(
+		t,
+		spec,
+		"linux_binprm",
+		"file.f_path.dentry.d_name.name",
+		[]api.ConfigBtfArg{
+			{Offset: 64, IsPointer: 1, IsInitialized: 1},
+			{Offset: 16, IsPointer: 0, IsInitialized: 1}, // Off = 152, but CI complains
+			{Offset: 8, IsPointer: 1, IsInitialized: 1},
+			{Offset: 32, IsPointer: 0, IsInitialized: 1},
+			{Offset: 8, IsPointer: 1, IsInitialized: 1},
+		})
+
+	// Test anonymous struct
+	testAssertEqualPath(
+		t,
+		spec,
+		"linux_binprm",
+		"mm.arg_start",
+		[]api.ConfigBtfArg{
+			{Offset: 16, IsPointer: 1, IsInitialized: 1},
+			{Offset: 312, IsPointer: 1, IsInitialized: 1}, // Off = 376, but CI complains
+		})
+	// Test Union
+	testAssertEqualPath(
+		t,
+		spec,
+		"linux_binprm",
+		"file.f_inode.i_dir_seq",
+		[]api.ConfigBtfArg{
+			{Offset: 64, IsPointer: 1, IsInitialized: 1},
+			{Offset: 32, IsPointer: 1, IsInitialized: 1}, // Off = 168, but CI complains
+			{Offset: 0, IsPointer: 1, IsInitialized: 1},
+		})
+}
+func testAssertPathIsAccessible(t *testing.T, spec *btf.Spec) {
+	_, _, err := testFindNextBtf(t, spec, "task_struct", "trc_reader_special.b.need_mb")
+	assert.NoError(t, err)
+
+	_, _, err = testFindNextBtf(t, spec, "linux_binprm", "mm.pgd.pgd")
+	assert.NoError(t, err)
+}
+
+func testAssertErrorOnInvalidPath(t *testing.T, spec *btf.Spec) {
+	_, _, err := testFindNextBtf(t, spec, "linux_binprm", "mm.pgd.fail")
+	assert.EqualError(t, err, "Attribute 'fail' not found in structure '' found [{pgd Typedef:\"pgdval_t\"[Int:\"long unsigned int\"] 0 0 []}]")
+}
+
+func TestFindNextBtf(t *testing.T) {
+	spec, err := NewBTF()
+	if err != nil {
+		assert.Error(t, err)
+	}
+	testAssertPathIsAccessible(t, spec)
+	testAssertErrorOnInvalidPath(t, spec)
+	testAssertEqualBtfPath(t, spec)
 }
