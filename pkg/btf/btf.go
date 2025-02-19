@@ -112,24 +112,18 @@ func GetCachedBTFFile() string {
 	return btfFile
 }
 
-func LoadBTF() (*btf.Spec, error) {
-	if btfFile != "" {
-		return NewBTF()
-	}
-	if err := InitCachedBTF(defaults.DefaultTetragonLib, ""); err != nil {
-		return nil, err
-	}
-	return NewBTF()
-}
-
 func FindBtfFuncParamFromHook(hook string, argIndex int) (*btf.FuncParam, error) {
-	var hookFn *btf.Func
-	spec, err := LoadBTF()
+	spec, err := NewBTF()
 	if err != nil {
 		return nil, err
 	}
+	return findBtfFuncParamFromHookWithSpec(spec, hook, argIndex)
+}
 
-	if err = spec.TypeByName(hook, &hookFn); err != nil {
+func findBtfFuncParamFromHookWithSpec(spec *btf.Spec, hook string, argIndex int) (*btf.FuncParam, error) {
+	var hookFn *btf.Func
+
+	if err := spec.TypeByName(hook, &hookFn); err != nil {
 		return nil, fmt.Errorf("failed to find BTF type for hook %q: %w", hook, err)
 	}
 
