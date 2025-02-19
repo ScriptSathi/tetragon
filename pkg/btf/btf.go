@@ -28,6 +28,22 @@ func btfFileExists(file string) error {
 	return err
 }
 
+func forceConfiguredKernelVersion() (string, error) {
+	var kernelVersion string
+
+	if option.Config.KernelVersion != "" {
+		kernelVersion = option.Config.KernelVersion
+		return kernelVersion, nil
+	}
+	var uname unix.Utsname
+	err := unix.Uname(&uname)
+	if err != nil {
+		return "", fmt.Errorf("Kernel version lookup (uname -r) failing. Use '--kernel' to set manually: %w", err)
+	}
+	kernelVersion = unix.ByteSliceToString(uname.Release[:])
+	return kernelVersion, nil
+}
+
 func observerFindBTF(lib, btf string) (string, error) {
 	if btf == "" {
 		// Alternative to auto-discovery and/or command line argument we
@@ -40,18 +56,9 @@ func observerFindBTF(lib, btf string) (string, error) {
 			return tetragonBtfEnv, nil
 		}
 
-		var kernelVersion string
-
-		// Force configured kernel version
-		if option.Config.KernelVersion != "" {
-			kernelVersion = option.Config.KernelVersion
-		} else {
-			var uname unix.Utsname
-			err := unix.Uname(&uname)
-			if err != nil {
-				return btf, fmt.Errorf("Kernel version lookup (uname -r) failing. Use '--kernel' to set manually: %w", err)
-			}
-			kernelVersion = unix.ByteSliceToString(uname.Release[:])
+		kernelVersion, err := forceConfiguredKernelVersion()
+		if err != nil {
+			return btf, err
 		}
 
 		// Preference of BTF files, first search for kernel exposed BTF, then
