@@ -6,8 +6,10 @@ package btf
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -42,6 +44,25 @@ func setupfiles() func(*testing.T, string, ...string) {
 			}
 		}
 	}
+}
+
+func listBtfFiles() ([]string, error) {
+	kernelVersion, err := forceConfiguredKernelVersion()
+	if err != nil {
+		return nil, err
+	}
+
+	_, testFname, _, _ := runtime.Caller(0)
+	testdataPath := filepath.Join(filepath.Dir(testFname), "..", "..", "testdata")
+
+	btfFiles := []string{
+		defaults.DefaultBTFFile,
+		path.Join(defaults.DefaultTetragonLib, "btf"),
+		path.Join(defaults.DefaultTetragonLib, "metadata", "vmlinux-"+kernelVersion),
+		filepath.Join(testdataPath, "btf", "vmlinux-5.4.104+"),
+	}
+
+	return btfFiles, nil
 }
 
 func TestObserverFindBTF(t *testing.T) {
